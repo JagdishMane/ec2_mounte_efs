@@ -1,0 +1,48 @@
+---
+
+#ansible-playbook efs_mount.yml -e "efs_id=fs-08c5a4b8db917f78f"
+
+- name: Playbook to mount efs filessystem
+  hosts: localhost
+  become: true
+  tasks:
+  - name: Install efs utils
+    yum:
+      name: amazon-efs-utils
+      state: installed
+
+  - name: Create store directory
+    file:
+      path: "{{ item }}"
+      state: directory
+    loop:
+      - /store/backup
+      - /store/backup.local
+
+  - name: Copy the files from /store/backup
+    synchronize:
+      src: /store/backup
+      dest: /store/backup.local
+      recursive: yes
+
+  - name: Empty /store/backup
+    command: "rm -rf /store/backup/*"
+
+  - name: Update efs config
+    replace:
+      path:  /etc/amazon/efs/efs-utils.conf
+      regexp: '^(stunnel_check_cert_hostname = true).*$'
+      replace: stunnel_check_cert_hostname = false
+
+  - name: Mount EFS
+    mount:
+      path: /store/backup
+      src: "{{ efs_id }}"
+      opts: tls,efs_netdev
+      fstype: efs
+      state: mounted
+
+  - command: "ls -altr /store/backup"
+    register: efs_contents
+
+  - debug: var=efs_contents
